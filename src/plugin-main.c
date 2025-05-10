@@ -70,12 +70,12 @@ obs_properties_t *filter_properties(void *data) {
 	UNUSED_PARAMETER(data);
 	obs_properties_t *properties = obs_properties_create();
 
-	obs_property_t *luma = obs_properties_add_float_slider(properties, "Luma", "Luma noise", 0.0, 1.0, 0.01),
-		*choma_noise = obs_properties_add_float_slider(properties, "Chroma_noise", "Chroma noise", 0.0, 1.0, 0.01),
-		*chroma_fire = obs_properties_add_float_slider(properties, "Chroma_fire", "Chroma fire", 0.0, 1.0, 0.01),
-		*echo = obs_properties_add_int_slider(properties, "Echo", "Echo", 0, 100, 1),
-		*skew = obs_properties_add_int_slider(properties, "Skew", "Skew", 0, 100, 1),
-		*wobble = obs_properties_add_int_slider(properties, "Wobble", "Wobble", 0, 100, 1); 
+	obs_properties_add_float_slider(properties, "Luma", "Luma noise", 0.0, 1.0, 0.01);
+	obs_properties_add_float_slider(properties, "Chroma_noise", "Chroma noise", 0.0, 1.0, 0.01);
+	obs_properties_add_float_slider(properties, "Chroma_fire", "Chroma fire", 0.0, 1.0, 0.01);
+	obs_properties_add_int_slider(properties, "Echo", "Echo", 0, 100, 1);
+	obs_properties_add_int_slider(properties, "Skew", "Skew", 0, 100, 1);
+	obs_properties_add_int_slider(properties, "Wobble", "Wobble", 0, 100, 1); 
 
 	return properties;
 }
@@ -119,7 +119,7 @@ static uint32_t get_y(void *data) {
 }
 
 static void filter_defaults(obs_data_t *settings) {
-
+	
 	UNUSED_PARAMETER(settings);
 }
 
@@ -209,7 +209,7 @@ static void filter_render(void *data, gs_effect_t *effect) {
 	gs_texture_t *srctexture = gs_texrender_get_texture(filterprops->texdst);
 
 	gs_effect_t *source_effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
-	gs_eparam_t *eff_eparam = gs_effect_get_param_by_name(source_effect, "image");
+	gs_effect_get_param_by_name(source_effect, "image");
 
 	if (srctexture) {
 		uint8_t *pix_data = NULL;
@@ -229,7 +229,7 @@ static void filter_render(void *data, gs_effect_t *effect) {
 			libsecam_filter_to_buffer(filterprops->secam_fire, filterprops->image_buffer, pix_data);
 
 			obs_enter_graphics();
-			src2 = gs_texture_create(filterprops->x_targ, filterprops->y_targ, GS_RGBA, 1, &pix_data, 0);
+			src2 = gs_texture_create(filterprops->x_targ, filterprops->y_targ, GS_RGBA, 1, (uint8_t**)&pix_data, 0);
 			obs_leave_graphics();
 						
 			bfree(pix_data);

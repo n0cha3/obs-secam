@@ -229,7 +229,7 @@ static void filter_render(void *data, gs_effect_t *effect) {
 			libsecam_filter_to_buffer(filterprops->secam_fire, filterprops->image_buffer, pix_data);
 
 			obs_enter_graphics();
-			src2 = gs_texture_create(filterprops->x_targ, filterprops->y_targ, GS_RGBA, 1, (uint8_t**)&pix_data, 0);
+			src2 = gs_texture_create(filterprops->x_targ, filterprops->y_targ, GS_RGBA, 1, (const uint8_t**)&pix_data, 0);
 			obs_leave_graphics();
 						
 			bfree(pix_data);

@@ -32,7 +32,7 @@ static void filter_destroy(void *data);
 static uint32_t get_x(void *data);
 static uint32_t get_y(void *data);
 static void filter_defaults(obs_data_t *settings);
-//static obs_properties_t *filter_props(void *data);
+obs_properties_t *filter_properties(void *data);
 static void filter_update(void *data, obs_data_t *settings);
 static void filter_render(void *data, gs_effect_t *effect);
 
@@ -56,6 +56,7 @@ struct obs_source_info secam_filter = {
 	.destroy = filter_destroy,
 	.update = filter_update,
 	.video_render = filter_render,
+	.get_properties = filter_properties,
 	.get_defaults = filter_defaults,
 	.get_name = filter_name
 };
@@ -65,6 +66,19 @@ static const char *filter_name(void *data) {
 	return ("SECAM Fire");
 }
 
+obs_properties_t *filter_properties(void *data) {
+	UNUSED_PARAMETER(data);
+	obs_properties_t *properties = obs_properties_create();
+
+	obs_property_t *luma = obs_properties_add_float_slider(properties, "Luma", "Luma noise", 0.0, 1.0, 0.01),
+		*choma_noise = obs_properties_add_float_slider(properties, "Chroma_noise", "Chroma noise", 0.0, 1.0, 0.01),
+		*chroma_fire = obs_properties_add_float_slider(properties, "Chroma_fire", "Chroma fire", 0.0, 1.0, 0.01),
+		*echo = obs_properties_add_int_slider(properties, "Echo", "Echo", 0, 100, 1),
+		*skew = obs_properties_add_int_slider(properties, "Skew", "Skew", 0, 100, 1),
+		*wobble = obs_properties_add_int_slider(properties, "Wobble", "Wobble", 0, 100, 1); 
+
+	return properties;
+}
 
 static void *filter_create(obs_data_t *settings, obs_source_t *source) {
 	UNUSED_PARAMETER(settings);
@@ -105,13 +119,21 @@ static uint32_t get_y(void *data) {
 }
 
 static void filter_defaults(obs_data_t *settings) {
+
 	UNUSED_PARAMETER(settings);
 }
 
 
 static void filter_update(void *data, obs_data_t *settings) {
-	UNUSED_PARAMETER(settings);
-	UNUSED_PARAMETER(data);
+	secam_info *filter_info = data;
+	if (filter_info->secam_fire_opt != NULL) {
+		filter_info->secam_fire_opt->chroma_fire = obs_data_get_double(settings, "Chroma_fire");
+		filter_info->secam_fire_opt->chroma_noise = obs_data_get_double(settings, "Chroma_noise");
+		filter_info->secam_fire_opt->luma_noise = obs_data_get_double(settings, "Luma");
+		filter_info->secam_fire_opt->echo = (int32_t)obs_data_get_int(settings, "Echo");
+		filter_info->secam_fire_opt->skew = (int32_t)obs_data_get_int(settings, "Skew");
+		filter_info->secam_fire_opt->wobble = (int32_t)obs_data_get_int(settings, "Wobble");
+	}
 }
 
 
@@ -156,14 +178,6 @@ static void filter_render(void *data, gs_effect_t *effect) {
 			filterprops->secam_fire_opt = libsecam_options(filterprops->secam_fire);
 		}
 	}
-
-	filterprops->secam_fire_opt->chroma_fire = 0.3;
-	filterprops->secam_fire_opt->chroma_noise = 0.0;
-	filterprops->secam_fire_opt->luma_noise = 0.0;
-	filterprops->secam_fire_opt->echo = 0;
-	filterprops->secam_fire_opt->skew = 3;
-	filterprops->secam_fire_opt->wobble = 90;
-
 
 	gs_texrender_reset(filterprops->texdst);
 

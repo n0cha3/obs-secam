@@ -199,7 +199,7 @@ static void filter_render(void *data, gs_effect_t *effect) {
 	}
 
 	update_options(filter_info);
-
+	
 	gs_texrender_reset(filter_info->texdst);
 
 	gs_blend_state_push();
@@ -235,13 +235,18 @@ static void filter_render(void *data, gs_effect_t *effect) {
 	if (source_texture) {
 		uint8_t *target_buffer = NULL;
 		gs_texture_t *target_texture = NULL;
-
 		obs_enter_graphics();
-		if (source_stage != NULL) gs_stagesurface_destroy(source_stage);
-			source_stage = gs_stagesurface_create(filter_info->x_targ, filter_info->y_targ, GS_RGBA);
+		
+		source_stage = gs_stagesurface_create(filter_info->x_targ, filter_info->y_targ, GS_RGBA);
+		
+		if (source_stage == NULL) {
+			obs_leave_graphics();
+			obs_source_skip_video_filter(filter_info->source);
+			return;
+		}
+
 		gs_stage_texture(source_stage, source_texture);
 		obs_leave_graphics();	
-
 		if (gs_stagesurface_map(source_stage, &source_buffer, &source_buf_pitch)) {
 			size_t buffer_size = filter_info->y_targ * source_buf_pitch;
 
@@ -256,6 +261,7 @@ static void filter_render(void *data, gs_effect_t *effect) {
 			bfree(target_buffer);
 
 			gs_stagesurface_unmap(source_stage);
+			gs_stagesurface_destroy(source_stage);
 		}
 
 		while (gs_effect_loop(default_effect, "Draw"))

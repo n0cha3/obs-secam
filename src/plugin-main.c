@@ -38,14 +38,11 @@ static void filter_render(void *data, gs_effect_t *effect);
 
 typedef struct secam_filter_info {
 	obs_source_t *source;
-	gs_texture_t *dst;
 	libsecam_t *secam_fire;
 	libsecam_options_t *secam_fire_opt;
-	uint8_t *image_buffer;
-	uint32_t bufsize;
-	gs_stagesurf_t *stag;
 	gs_texrender_t *texdst;
 	uint32_t x_targ, y_targ;
+	libsecam_options_t load_secam_options;
 } secam_info;
 
 struct obs_source_info secam_filter = {
@@ -82,13 +79,20 @@ obs_properties_t *filter_properties(void *data) {
 
 static void *filter_create(obs_data_t *settings, obs_source_t *source) {
 	UNUSED_PARAMETER(settings);
+
 	secam_info *filter_info = bzalloc(sizeof(secam_info));
+
 	filter_info->x_targ = obs_source_get_base_width(source);
 	filter_info->y_targ = obs_source_get_base_height(source);
 	filter_info->source = source;
-	filter_info->dst = NULL; 
-	filter_info->stag = NULL;
 	filter_info->secam_fire = NULL;
+	
+	filter_info->load_secam_options.chroma_fire = obs_data_get_double(settings, "Chroma_fire");
+	filter_info->load_secam_options.chroma_noise = obs_data_get_double(settings, "Chroma_noise");
+	filter_info->load_secam_options.luma_noise = obs_data_get_double(settings, "Luma");
+	filter_info->load_secam_options.echo = (int32_t)obs_data_get_int(settings, "Echo");
+	filter_info->load_secam_options.skew = (int32_t)obs_data_get_int(settings, "Skew");
+	filter_info->load_secam_options.wobble = (int32_t)obs_data_get_int(settings, "Wobble");
 
 	obs_enter_graphics();
 	filter_info->texdst = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
@@ -98,94 +102,111 @@ static void *filter_create(obs_data_t *settings, obs_source_t *source) {
 }
 
 static void filter_destroy(void *data) {
-	secam_info *filterprops = data;
+	secam_info *filter_info = data;
 	obs_enter_graphics();
-	gs_texrender_destroy(filterprops->texdst);
+	gs_texrender_destroy(filter_info->texdst);
 	obs_leave_graphics();
 
-	if (filterprops->secam_fire != NULL) libsecam_close(filterprops->secam_fire);
+	if (filter_info->secam_fire != NULL) libsecam_close(filter_info->secam_fire);
 
 	bfree(data);
 }
 
 static uint32_t get_x(void *data) {
-	secam_info *filterprops = data;
-	return filterprops->x_targ;
+	secam_info *filter_info = data;
+	return filter_info->x_targ;
 }
 
 static uint32_t get_y(void *data) {
-	secam_info *filterprops = data;
-	return filterprops->y_targ;
+	secam_info *filter_info = data;
+	return filter_info->y_targ;
 }
 
 static void filter_defaults(obs_data_t *settings) {
-	
-	UNUSED_PARAMETER(settings);
+	obs_data_set_default_double(settings, "Chroma_fire", 0.0);
+	obs_data_set_default_double(settings, "Chroma_noise", 0.0);
+	obs_data_set_default_double(settings, "Luma", 0.0);
+	obs_data_set_default_int(settings, "Echo", 0);
+	obs_data_set_default_int(settings, "Skew", 0);
+	obs_data_set_default_int(settings, "Wobble", 0);
 }
-
 
 static void filter_update(void *data, obs_data_t *settings) {
 	secam_info *filter_info = data;
 	if (filter_info->secam_fire_opt != NULL) {
-		filter_info->secam_fire_opt->chroma_fire = obs_data_get_double(settings, "Chroma_fire");
-		filter_info->secam_fire_opt->chroma_noise = obs_data_get_double(settings, "Chroma_noise");
-		filter_info->secam_fire_opt->luma_noise = obs_data_get_double(settings, "Luma");
-		filter_info->secam_fire_opt->echo = (int32_t)obs_data_get_int(settings, "Echo");
-		filter_info->secam_fire_opt->skew = (int32_t)obs_data_get_int(settings, "Skew");
-		filter_info->secam_fire_opt->wobble = (int32_t)obs_data_get_int(settings, "Wobble");
+	filter_info->load_secam_options.chroma_fire = obs_data_get_double(settings, "Chroma_fire");
+	filter_info->load_secam_options.chroma_noise = obs_data_get_double(settings, "Chroma_noise");
+	filter_info->load_secam_options.luma_noise = obs_data_get_double(settings, "Luma");
+	filter_info->load_secam_options.echo = (int32_t)obs_data_get_int(settings, "Echo");
+	filter_info->load_secam_options.skew = (int32_t)obs_data_get_int(settings, "Skew");
+	filter_info->load_secam_options.wobble = (int32_t)obs_data_get_int(settings, "Wobble");
 	}
 }
 
+static void update_options(const libsecam_options_t source, libsecam_options_t *target, secam_info *filter_info) {
+	if (filter_info->secam_fire_opt != NULL) {
+		filter_info->secam_fire_opt->chroma_fire = filter_info->load_secam_options.chroma_fire;
+		filter_info->secam_fire_opt->chroma_noise = filter_info->load_secam_options.chroma_noise;
+		filter_info->secam_fire_opt->luma_noise = filter_info->load_secam_options.luma_noise;
+		filter_info->secam_fire_opt->echo = filter_info->load_secam_options.echo;
+		filter_info->secam_fire_opt->wobble = filter_info->load_secam_options.wobble;
+		filter_info->secam_fire_opt->skew = filter_info->load_secam_options.skew;
+	}
+}
 
 static void filter_render(void *data, gs_effect_t *effect) {
 	UNUSED_PARAMETER(effect);
 
-	secam_info *filterprops = data;
-	
-	if (!filterprops->source) return;
+	secam_info *filter_info = data;
 
-	filterprops->image_buffer = NULL;
+	if (!filter_info->source) return;
+
+	uint8_t *source_buffer = NULL;
+	uint32_t source_buf_pitch;
 	
-	obs_source_t *target = obs_filter_get_target(filterprops->source), 
-		*parent = obs_filter_get_parent(filterprops->source);
+	gs_stagesurf_t *source_stage = NULL;
+
+	obs_source_t *target = obs_filter_get_target(filter_info->source), 
+		*parent = obs_filter_get_parent(filter_info->source);
 
 	if (parent == NULL) {
-		obs_source_skip_video_filter(filterprops->source);
+		obs_source_skip_video_filter(filter_info->source);
 		return;
 	}
 
-	uint32_t x_rend = obs_source_get_base_width(filterprops->source);
-	uint32_t y_rend = obs_source_get_base_height(filterprops->source);
+	uint32_t x_rend = obs_source_get_base_width(filter_info->source);
+	uint32_t y_rend = obs_source_get_base_height(filter_info->source);
 	
-	if (filterprops->secam_fire == NULL) {
-		filterprops->secam_fire = libsecam_init(filterprops->x_targ, filterprops->y_targ);
-		filterprops->secam_fire_opt = libsecam_options(filterprops->secam_fire);
+	if (filter_info->secam_fire == NULL) {
+		filter_info->secam_fire = libsecam_init(filter_info->x_targ, filter_info->y_targ);
+		filter_info->secam_fire_opt = libsecam_options(filter_info->secam_fire);
 	}
 
-	if (x_rend != filterprops->x_targ || y_rend != filterprops->y_targ) {
-		filterprops->image_buffer = NULL;
-	    filterprops->x_targ = x_rend;
-	    filterprops->y_targ = y_rend;
+	if (x_rend != filter_info->x_targ || y_rend != filter_info->y_targ) {
+	    filter_info->x_targ = x_rend;
+	    filter_info->y_targ = y_rend;
 
-		if (filterprops->secam_fire == NULL) {
-			filterprops->secam_fire = libsecam_init(filterprops->x_targ, filterprops->y_targ);
-			filterprops->secam_fire_opt = libsecam_options(filterprops->secam_fire);
+		if (filter_info->secam_fire == NULL) {
+			filter_info->secam_fire = libsecam_init(filter_info->x_targ, filter_info->y_targ);
+			filter_info->secam_fire_opt = libsecam_options(filter_info->secam_fire);
 		}
 
 		else {
-			libsecam_close(filterprops->secam_fire);
-			filterprops->secam_fire = libsecam_init(filterprops->x_targ, filterprops->y_targ);
-			filterprops->secam_fire_opt = libsecam_options(filterprops->secam_fire);
+			libsecam_close(filter_info->secam_fire);
+			filter_info->secam_fire = libsecam_init(filter_info->x_targ, filter_info->y_targ);
+			filter_info->secam_fire_opt = libsecam_options(filter_info->secam_fire);
 		}
 	}
 
-	gs_texrender_reset(filterprops->texdst);
+	update_options(filter_info->load_secam_options, filter_info->secam_fire_opt, filter_info);
+
+	gs_texrender_reset(filter_info->texdst);
 
 	gs_blend_state_push();
 
 	gs_blend_function(GS_BLEND_ONE, GS_BLEND_ZERO);
 
-	if (gs_texrender_begin(filterprops->texdst, filterprops->x_targ, filterprops->y_targ)) {
+	if (gs_texrender_begin(filter_info->texdst, filter_info->x_targ, filter_info->y_targ)) {
 		uint32_t source_params = obs_source_get_output_flags(target);
 		bool custom_draw = (source_params & OBS_SOURCE_CUSTOM_DRAW),
 		async_draw = (source_params & OBS_SOURCE_ASYNC);
@@ -194,54 +215,54 @@ static void filter_render(void *data, gs_effect_t *effect) {
 
 		vec4_zero(&col);
 		gs_clear(GS_CLEAR_COLOR, &col, 0.0f, 0);
-		gs_ortho(0.0f, (float)filterprops->x_targ, 0.0f, (float)filterprops->y_targ, -100.0f, 100.0f);
+		gs_ortho(0.0f, (float)filter_info->x_targ, 0.0f, (float)filter_info->y_targ, -100.0f, 100.0f);
 
 		if (target == parent && !custom_draw && !async_draw)
 			obs_source_default_render(target);
 		else
 			obs_source_video_render(target);
 
-		gs_texrender_end(filterprops->texdst);
+		gs_texrender_end(filter_info->texdst);
 		
 	}
 	gs_blend_state_pop();
 
-	gs_texture_t *srctexture = gs_texrender_get_texture(filterprops->texdst);
+	gs_texture_t *source_texture = gs_texrender_get_texture(filter_info->texdst);
 
-	gs_effect_t *source_effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
-	gs_effect_get_param_by_name(source_effect, "image");
+	gs_effect_t *default_effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
+	gs_effect_get_param_by_name(default_effect, "image");
 
-	if (srctexture) {
-		uint8_t *pix_data = NULL;
-		gs_texture_t *src2 = NULL;
+	if (source_texture) {
+		uint8_t *target_buffer = NULL;
+		gs_texture_t *target_texture = NULL;
 
 		obs_enter_graphics();
-		if (filterprops->stag != NULL) gs_stagesurface_destroy(filterprops->stag);
-			filterprops->stag = gs_stagesurface_create(filterprops->x_targ, filterprops->y_targ, GS_RGBA);
-		gs_stage_texture(filterprops->stag, srctexture);
+		if (source_stage != NULL) gs_stagesurface_destroy(source_stage);
+			source_stage = gs_stagesurface_create(filter_info->x_targ, filter_info->y_targ, GS_RGBA);
+		gs_stage_texture(source_stage, source_texture);
 		obs_leave_graphics();	
 
-		if (gs_stagesurface_map(filterprops->stag, &filterprops->image_buffer, &filterprops->bufsize)) {
-			size_t buffersize = filterprops->y_targ * filterprops->bufsize;
+		if (gs_stagesurface_map(source_stage, &source_buffer, &source_buf_pitch)) {
+			size_t buffer_size = filter_info->y_targ * source_buf_pitch;
 
-			pix_data = bzalloc(buffersize);
+			target_buffer = bzalloc(buffer_size);
 
-			libsecam_filter_to_buffer(filterprops->secam_fire, filterprops->image_buffer, pix_data);
+			libsecam_filter_to_buffer(filter_info->secam_fire, source_buffer, target_buffer);
 
 			obs_enter_graphics();
-			src2 = gs_texture_create(filterprops->x_targ, filterprops->y_targ, GS_RGBA, 1, (const uint8_t**)&pix_data, 0);
+			target_texture = gs_texture_create(filter_info->x_targ, filter_info->y_targ, GS_RGBA, 1, (const uint8_t**)&target_buffer, 0);
 			obs_leave_graphics();
 						
-			bfree(pix_data);
+			bfree(target_buffer);
 
-			gs_stagesurface_unmap(filterprops->stag);
+			gs_stagesurface_unmap(source_stage);
 		}
 
-		while (gs_effect_loop(source_effect, "Draw"))
-			obs_source_draw(src2, 0, 0, filterprops->x_targ, filterprops->y_targ, false);
+		while (gs_effect_loop(default_effect, "Draw"))
+			obs_source_draw(target_texture, 0, 0, filter_info->x_targ, filter_info->y_targ, false);
 
 			obs_enter_graphics();
-			gs_texture_destroy(src2);
+			gs_texture_destroy(target_texture);
 			obs_leave_graphics();
 	}
 }

@@ -143,7 +143,7 @@ static void filter_update(void *data, obs_data_t *settings) {
 	}
 }
 
-static void update_options(const libsecam_options_t source, libsecam_options_t *target, secam_info *filter_info) {
+static void update_options(secam_info *filter_info) {
 	if (filter_info->secam_fire_opt != NULL) {
 		filter_info->secam_fire_opt->chroma_fire = filter_info->load_secam_options.chroma_fire;
 		filter_info->secam_fire_opt->chroma_noise = filter_info->load_secam_options.chroma_noise;
@@ -198,7 +198,7 @@ static void filter_render(void *data, gs_effect_t *effect) {
 		}
 	}
 
-	update_options(filter_info->load_secam_options, filter_info->secam_fire_opt, filter_info);
+	update_options(filter_info);
 
 	gs_texrender_reset(filter_info->texdst);
 

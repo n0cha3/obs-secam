@@ -79,8 +79,6 @@ obs_properties_t *filter_properties(void *data) {
 }
 
 static void *filter_create(obs_data_t *settings, obs_source_t *source) {
-	UNUSED_PARAMETER(settings);
-
 	secam_info *filter_info = bzalloc(sizeof(secam_info));
 
 	filter_info->x_targ = obs_source_get_base_width(source);

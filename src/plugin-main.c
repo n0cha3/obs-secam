@@ -65,6 +65,7 @@ static const char *filter_name(void *data) {
 
 obs_properties_t *filter_properties(void *data) {
 	UNUSED_PARAMETER(data);
+
 	obs_properties_t *properties = obs_properties_create();
 
 	obs_properties_add_float_slider(properties, "Luma", "Luma noise", 0.0, 1.0, 0.01);
@@ -133,13 +134,14 @@ static void filter_defaults(obs_data_t *settings) {
 
 static void filter_update(void *data, obs_data_t *settings) {
 	secam_info *filter_info = data;
+
 	if (filter_info->secam_fire_opt != NULL) {
-	filter_info->load_secam_options.chroma_fire = obs_data_get_double(settings, "Chroma_fire");
-	filter_info->load_secam_options.chroma_noise = obs_data_get_double(settings, "Chroma_noise");
-	filter_info->load_secam_options.luma_noise = obs_data_get_double(settings, "Luma");
-	filter_info->load_secam_options.echo = (int32_t)obs_data_get_int(settings, "Echo");
-	filter_info->load_secam_options.skew = (int32_t)obs_data_get_int(settings, "Skew");
-	filter_info->load_secam_options.wobble = (int32_t)obs_data_get_int(settings, "Wobble");
+		filter_info->load_secam_options.chroma_fire = obs_data_get_double(settings, "Chroma_fire");
+		filter_info->load_secam_options.chroma_noise = obs_data_get_double(settings, "Chroma_noise");
+		filter_info->load_secam_options.luma_noise = obs_data_get_double(settings, "Luma");
+		filter_info->load_secam_options.echo = (int32_t)obs_data_get_int(settings, "Echo");
+		filter_info->load_secam_options.skew = (int32_t)obs_data_get_int(settings, "Skew");
+		filter_info->load_secam_options.wobble = (int32_t)obs_data_get_int(settings, "Wobble");
 	}
 }
 
@@ -159,7 +161,7 @@ static void filter_render(void *data, gs_effect_t *effect) {
 
 	secam_info *filter_info = data;
 
-	if (!filter_info->source) return;
+	if (filter_info->source == NULL) return;
 
 	uint8_t *source_buffer = NULL;
 	uint32_t source_buf_pitch;
@@ -169,7 +171,7 @@ static void filter_render(void *data, gs_effect_t *effect) {
 	obs_source_t *target = obs_filter_get_target(filter_info->source), 
 		*parent = obs_filter_get_parent(filter_info->source);
 
-	if (parent == NULL) {
+	if (parent == NULL || target == NULL) {
 		obs_source_skip_video_filter(filter_info->source);
 		return;
 	}
@@ -186,16 +188,10 @@ static void filter_render(void *data, gs_effect_t *effect) {
 	    filter_info->x_targ = x_rend;
 	    filter_info->y_targ = y_rend;
 
-		if (filter_info->secam_fire == NULL) {
-			filter_info->secam_fire = libsecam_init(filter_info->x_targ, filter_info->y_targ);
-			filter_info->secam_fire_opt = libsecam_options(filter_info->secam_fire);
-		}
+		if (filter_info->secam_fire != NULL) libsecam_close(filter_info->secam_fire);
 
-		else {
-			libsecam_close(filter_info->secam_fire);
-			filter_info->secam_fire = libsecam_init(filter_info->x_targ, filter_info->y_targ);
-			filter_info->secam_fire_opt = libsecam_options(filter_info->secam_fire);
-		}
+		filter_info->secam_fire = libsecam_init(filter_info->x_targ, filter_info->y_targ);
+		filter_info->secam_fire_opt = libsecam_options(filter_info->secam_fire);
 	}
 
 	update_options(filter_info);
@@ -203,7 +199,6 @@ static void filter_render(void *data, gs_effect_t *effect) {
 	gs_texrender_reset(filter_info->texdst);
 
 	gs_blend_state_push();
-
 	gs_blend_function(GS_BLEND_ONE, GS_BLEND_ZERO);
 
 	if (gs_texrender_begin(filter_info->texdst, filter_info->x_targ, filter_info->y_targ)) {
@@ -217,14 +212,15 @@ static void filter_render(void *data, gs_effect_t *effect) {
 		gs_clear(GS_CLEAR_COLOR, &col, 0.0f, 0);
 		gs_ortho(0.0f, (float)filter_info->x_targ, 0.0f, (float)filter_info->y_targ, -100.0f, 100.0f);
 
+
 		if (target == parent && !custom_draw && !async_draw)
 			obs_source_default_render(target);
 		else
 			obs_source_video_render(target);
 
-		gs_texrender_end(filter_info->texdst);
-		
+		gs_texrender_end(filter_info->texdst);	
 	}
+
 	gs_blend_state_pop();
 
 	gs_texture_t *source_texture = gs_texrender_get_texture(filter_info->texdst);
@@ -247,6 +243,7 @@ static void filter_render(void *data, gs_effect_t *effect) {
 
 		gs_stage_texture(source_stage, source_texture);
 		obs_leave_graphics();	
+
 		if (gs_stagesurface_map(source_stage, &source_buffer, &source_buf_pitch)) {
 			size_t buffer_size = filter_info->y_targ * source_buf_pitch;
 
